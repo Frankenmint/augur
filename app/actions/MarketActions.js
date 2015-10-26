@@ -15,11 +15,13 @@ var MarketActions = {
         console.log("got comments:", comments);
         if (comments && comments.constructor === Array && comments.length) {
           market.comments = comments;
-          self.dispatch(constants.market.UPDATE_MARKET_SUCCESS, { market: market });
+        
+
         }
       });
     }
   },
+
 
   updateComments: function (comments, marketId) {
     var market = this.flux.store("market").getMarket(marketId);
@@ -47,27 +49,52 @@ var MarketActions = {
     this.flux.actions.market.clear(pulse, xhr);
     utils.rotate(constants.MARKET_CACHE);
     if (!got && constants.MARKET_CACHE[0] !== startNode) {
+
       this.flux.actions.market.loadMarketCache(got, pulse, xhr, startNode);
+    
     }
   },
 
-  parseCache: function (cached) {
+  
+//Toggles Mature Markets Switch from Branch.jsx Control Button
+  mMarkets: function() {
+    this.flux.actions.market.mMarkets = true;
+  },
+  
+
+  parseCache: function (cached, mMarkets) {
     var self = this;
     var block = self.flux.store('network').getState().blockNumber;
     var account = self.flux.store('config').getAccount();
     var branchId = self.flux.store('branch').getCurrentBranch().id;
     var blackmarkets = blacklist.markets[augur.network_id][branchId];
     var markets = {};
+    
+    mMarkets = self.flux.actions.market.mMarkets;
+    
+    var mktsToggler; 
+
     async.eachSeries(cached, function (thisMarket, nextMarket) {
       var marketId = abi.bignum(thisMarket._id);
+      var endDate = thisMarket.endDate;
+       
+      //Filters markets to either active or matured on mktsToggler
+      if (mMarkets) mktsToggler = endDate - block > 0 ? true : false;
+      else mktsToggler = endDate - block < 0 ? true : false;
+
+
       if (abi.bignum(thisMarket.branchId).eq(abi.bignum(branchId)) &&
-          !_.contains(blackmarkets, marketId.toString(16)) &&
-          !thisMarket.invalid && thisMarket.price && thisMarket.description) {
+      !_.contains(
+           blackmarkets, marketId.toString(16)) &&
+          !thisMarket.invalid && mktsToggler
+         && thisMarket.price && thisMarket.description)
+
+      {
         thisMarket.id = marketId;
-        thisMarket.endDate = utils.blockToDate(thisMarket.endDate, block);
+        thisMarket.endDate = utils.blockToDate(thisMarket.endDate, block);    
         if (thisMarket.creationBlock) {
           thisMarket.creationDate = utils.blockToDate(thisMarket.creationBlock, block);
-        }
+        } 
         thisMarket.price = abi.bignum(thisMarket.price);
         thisMarket.tradingFee = abi.bignum(thisMarket.tradingFee);
         thisMarket.creationFee = abi.bignum(thisMarket.creationFee);
@@ -76,6 +103,7 @@ var MarketActions = {
         thisMarket.numOutcomes = parseInt(thisMarket.numOutcomes);
         thisMarket.tradingPeriod = abi.bignum(thisMarket.tradingPeriod);
         thisMarket.traderId = abi.bignum(thisMarket.participants[account]);
+
         if (thisMarket.outcomes && thisMarket.outcomes.length) {
           async.each(thisMarket.outcomes, function (thisOutcome, nextOutcome) {
             if (thisOutcome.outstandingShares) {
@@ -131,9 +159,9 @@ var MarketActions = {
       if (pulse) clearTimeout(pulse);
       got = true;
       self.dispatch(constants.market.GOT_CACHED_MARKETS, { cachedMarkets: cached });
-      self.flux.actions.config.updatePercentLoaded(20);
-      setTimeout(function () { self.flux.actions.market.parseCache(cached); }, 0);
-    });
+      self.flux.actions.config.updatePercentLoaded(25);
+      setTimeout(function () { self.flux.actions.market.parseCache(cached); }, 0); 
+      });
 
     // after a delay, rotate cache nodes and try again
     if (pulse) clearTimeout(pulse);
@@ -141,6 +169,7 @@ var MarketActions = {
       self.flux.actions.market.nextNode(got, pulse, xhr, startNode);
     }, constants.CACHE_PULSE);
   },
+
 
   loadMarkets: function () {
     var self = this;
@@ -167,6 +196,7 @@ var MarketActions = {
       // initialize all markets
       var markets = {};
       _.each(marketIds, function (id) {
+
         markets[id] = self.flux.actions.market.initMarket(id);
       }, self);
 
